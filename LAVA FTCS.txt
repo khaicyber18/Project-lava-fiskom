@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EWS Gunung Berapi - Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #090D16;
+            --panel-bg: #111827;
+            --text-main: #ffffff;
+            --text-dim: #9CA3AF;
+            --accent: #00CCFF;
+        }
+        
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 95vh;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        /* Grid untuk Panel Status */
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background-color: var(--panel-bg);
+            border-radius: 8px;
+            padding: 15px;
+            border: 1px solid #1F2937;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .card h3 {
+            margin: 0 0 10px 0;
+            font-size: 12px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+
+        .card .value {
+            font-size: 24px;
+            font-weight: bold;
+            font-family: monospace;
+        }
+
+        #status-ews { color: #FF9900; } /* Default Waspada */
+        #jarak-lava { color: #00CCFF; }
+        #suhu-puncak { color: #FF3D00; }
+
+        /* Area Visualisasi 3D */
+        .viz-container {
+            flex-grow: 1;
+            background-color: var(--panel-bg);
+            border-radius: 8px;
+            border: 1px solid #1F2937;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #plot3d {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Sistem Pemantauan EWS Gunung Berapi</h1>
+        <p style="color: var(--text-dim); margin-top: 5px; font-size: 14px;">Tipe Gunung: Stratovolcano | Simulasi FTCS Termal</p>
+    </div>
+
+    <div class="status-grid">
+        <div class="card">
+            <h3>Status Gunung</h3>
+            <div class="value" id="status-ews">WASPADA</div>
+        </div>
+        <div class="card">
+            <h3>Jarak Front Lava ke Dam</h3>
+            <div class="value"><span id="jarak-lava">2.36</span> KM</div>
+        </div>
+        <div class="card">
+            <h3>Suhu Puncak</h3>
+            <div class="value"><span id="suhu-puncak">1000</span> °C</div>
+        </div>
+        <div class="card">
+            <h3>Waktu Simulasi</h3>
+            <div class="value"><span id="waktu-sim">1.1</span> s</div>
+        </div>
+    </div>
+
+    <div class="viz-container">
+        <div id="plot3d"></div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. GENERASI TOPOGRAFI 3D MOCKUP (Javascript)
+        // ==========================================
+        const N = 50; // Resolusi disesuaikan untuk browser agar ringan
+        const L = 40.0;
+        const x = [], y = [], z = [];
+
+        for (let i = 0; i < N; i++) {
+            x.push((i / (N - 1)) * L);
+            y.push((i / (N - 1)) * L);
+            z[i] = [];
+        }
+
+        const x_kawah = 20.0;
+        const y_kawah = 32.0;
+
+        // Bikin Gunung mirip di Python
+        for (let i = 0; i < N; i++) {
+            for (let j = 0; j < N; j++) {
+                const X = x[j];
+                const Y = y[i];
+                const R2 = Math.pow(X - x_kawah, 2) + Math.pow(Y - y_kawah, 2);
+                
+                // Rumus Gaussian untuk bentuk gunung
+                let Z = 850 * Math.exp(-R2 / (2 * Math.pow(8.0, 2)));
+                
+                // Tambahan elevasi kasar
+                Z = Math.max(Z, 10); 
+                z[i][j] = Z;
+            }
+        }
+
+        // ==========================================
+        // 2. RENDER KE PLOTLY
+        // ==========================================
+        const data = [{
+            z: z,
+            x: x,
+            y: y,
+            type: 'surface',
+            colorscale: 'Earth', // Mirip warna vegetasi/gelap
+            showscale: false
+        }];
+
+        const layout = {
+            paper_bgcolor: '#111827',
+            plot_bgcolor: '#111827',
+            margin: { t: 0, b: 0, l: 0, r: 0 },
+            scene: {
+                xaxis: { visible: false },
+                yaxis: { visible: false },
+                zaxis: { visible: false },
+                camera: {
+                    eye: { x: 1.5, y: -1.5, z: 1.2 } // Mirip elev=45, azim=55
+                }
+            }
+        };
+
+        Plotly.newPlot('plot3d', data, layout, {responsive: true});
+
+        // ==========================================
+        // 3. SIMULASI DATA EWS (Animasi UI Angka)
+        // ==========================================
+        let waktu = 1.1;
+        let jarak = 2.36;
+
+        setInterval(() => {
+            waktu += 0.1;
+            // Simulasi lava makin turun/mendekat
+            if (jarak > 0.1) jarak -= 0.02; 
+            
+            // Format string desimal yang rapi dan konsisten
+            document.getElementById('waktu-sim').innerText = waktu.toFixed(1);
+            document.getElementById('jarak-lava').innerText = Math.max(0, jarak).toFixed(2);
+            
+            // Ubah status dan warna jika lava makin dekat
+            const statusEl = document.getElementById('status-ews');
+            if (jarak <= 0.1) {
+                statusEl.innerText = "EVAKUASI!";
+                statusEl.style.color = "#FF0000";
+            } else if (jarak <= 1.0) {
+                statusEl.innerText = "AWAS";
+                statusEl.style.color = "#FF3300";
+            }
+        }, 1000); // Update setiap 1 detik
+    </script>
+</body>
+</html>
